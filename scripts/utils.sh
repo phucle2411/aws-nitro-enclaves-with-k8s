@@ -21,6 +21,10 @@ function restore_ifs {
   IFS=$_IFS
 }
 
+to_upper_case() {
+  echo $1 | awk '{print toupper($0)}'
+}
+
 # ######################################################
 
 # Send an error-decorated text message to stderr

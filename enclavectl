@@ -125,7 +125,7 @@ apply_configuration() {
         rm -f "$WORKING_DIR/$FILE_CONFIGURATION"
         break
       }
-      echo "CONFIG_${item^^}=\"$value\"" >> "$WORKING_DIR/$FILE_CONFIGURATION"
+      echo "CONFIG_$(to_upper_case ${item})=\"$value\"" >> "$WORKING_DIR/$FILE_CONFIGURATION"
     done
   }
 
@@ -141,7 +141,7 @@ try_create_setup_uuid() {
 
   [[ "${CONFIG_SETUP_UUID}" != "" ]] || {
     say "Setup UUID doesn't exist. Creating one..."
-    CONFIG_SETUP_UUID=$(<"/proc/sys/kernel/random/uuid")
+    CONFIG_SETUP_UUID=$(uuidgen)
   }
 
   # Check if the UUID is valid.
@@ -164,7 +164,7 @@ try_load_configuration() {
 
     for item in "${CONFIG_NAMES[@]}"
     do
-      local var_name="CONFIG_${item^^}"
+      local var_name="CONFIG_$(to_upper_case ${item})"
       local value=${!var_name}
       [[ $value = "" || $value = "null" ]] && {
         say_warn "The configuration seems corrupted! Ignoring existing configuration..."

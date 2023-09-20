@@ -36,7 +36,7 @@ EOF
 ####################################################
 
 reset_ifs
-readonly b64_lt_user_data=$(printf '%s\n' $lt_user_data | base64 -w 0)
+readonly b64_lt_user_data=$(printf '%s\n' $lt_user_data | base64 | tr -d '\n')
 restore_ifs
 
 ####################################################
