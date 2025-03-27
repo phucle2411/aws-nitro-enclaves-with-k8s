@@ -3,7 +3,7 @@
 
 ######## full image ########
 
-FROM amazonlinux as full_image
+FROM public.ecr.aws/amazonlinux/amazonlinux:2 as full_image
 
 # Install packages
 #
@@ -52,7 +52,7 @@ RUN \
 
 ######## kms image ########
 
-FROM amazonlinux:2 as image
+FROM public.ecr.aws/amazonlinux/amazonlinux:2 as image
 
 # Set Environment Variables
 #
