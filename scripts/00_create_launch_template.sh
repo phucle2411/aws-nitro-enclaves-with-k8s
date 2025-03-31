@@ -11,6 +11,16 @@ MIME-Version: 1.0
 Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
 
 --==MYBOUNDARY==
+Content-Type: text/cloud-config; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="cloud-config.txt"
+
+#cloud-config
+bootcmd:
+ - dnf install aws-nitro-enclaves-cli -y
+
+--==MYBOUNDARY==
 Content-Type: text/x-shellscript; charset="us-ascii"
 
 #!/bin/bash -e
@@ -19,15 +29,13 @@ readonly NE_ALLOCATOR_SPEC_PATH="/etc/nitro_enclaves/allocator.yaml"
 readonly CPU_COUNT=$CONFIG_NODE_ENCLAVE_CPU_LIMIT
 readonly MEMORY_MIB=$CONFIG_NODE_ENCLAVE_MEMORY_LIMIT_MIB
 
-# This step below is needed to install nitro-enclaves-allocator service.
-amazon-linux-extras install aws-nitro-enclaves-cli -y
 # Update enclave's allocator specification: allocator.yaml
 sed -i "s/cpu_count:.*/cpu_count: \$CPU_COUNT/g" \$NE_ALLOCATOR_SPEC_PATH
 sed -i "s/memory_mib:.*/memory_mib: \$MEMORY_MIB/g" \$NE_ALLOCATOR_SPEC_PATH
 # Restart the nitro-enclaves-allocator service to take changes effect.
-systemctl restart nitro-enclaves-allocator.service
+systemctl enable --now nitro-enclaves-allocator.service
 echo "NE user data script has finished successfully."
---==MYBOUNDARY==
+--==MYBOUNDARY==--
 EOF
 )
 
