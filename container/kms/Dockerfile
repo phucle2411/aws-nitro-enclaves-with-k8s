@@ -3,7 +3,7 @@
 
 ######## full image ########
 
-FROM amazonlinux as full_image
+FROM public.ecr.aws/amazonlinux/amazonlinux:2 as full_image
 
 # Install packages
 #
@@ -52,7 +52,7 @@ RUN \
 
 ######## kms image ########
 
-FROM amazonlinux:2 as image
+FROM public.ecr.aws/amazonlinux/amazonlinux:2 as image
 
 # Set Environment Variables
 #
@@ -64,7 +64,11 @@ ENV config_verbose="no"
 # Copying dependencies of the enclave apps from the 'full_image'
 # to shrink the final image size.
 #
-COPY --from=full_image /ne-deps /
+COPY --from=full_image /ne-deps/etc /etc
+COPY --from=full_image /ne-deps/lib64 /lib64
+COPY --from=full_image /ne-deps/run /run
+COPY --from=full_image /ne-deps/usr /usr
+COPY --from=full_image /ne-deps/var /var
 
 COPY bin/kmstool_instance          /usr/bin/kmstool_instance
 COPY bin/libnsm.so                 /usr/lib64/libnsm.so

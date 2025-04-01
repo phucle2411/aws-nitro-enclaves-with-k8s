@@ -3,7 +3,7 @@
 
 ######## full image ########
 
-FROM amazonlinux:2 as full_image
+FROM public.ecr.aws/amazonlinux/amazonlinux:2 as full_image
 
 RUN amazon-linux-extras install aws-nitro-enclaves-cli && \
     yum install aws-nitro-enclaves-cli-devel jq -y
@@ -36,12 +36,16 @@ RUN \
 
 ######## hello image ########
 
-FROM amazonlinux:2 as image
+FROM public.ecr.aws/amazonlinux/amazonlinux:2 as image
 
 # Copying dependencies of the enclave apps from the 'full_image'
 # to shrink the final image size.
 #
-COPY --from=full_image /ne-deps /
+COPY --from=full_image /ne-deps/etc /etc
+COPY --from=full_image /ne-deps/lib64 /lib64
+COPY --from=full_image /ne-deps/run /run
+COPY --from=full_image /ne-deps/usr /usr
+COPY --from=full_image /ne-deps/var /var
 
 COPY bin/hello.eif /home
 COPY hello/run.sh  /home

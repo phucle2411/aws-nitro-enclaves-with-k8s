@@ -8,7 +8,7 @@ Dockerfiles are needed to build a container image that holds your enclave applic
 There are cases when the instance application can be optional (like the `hello` example) or mandatory (like the `kms` example).
 
 An image must also include the [Nitro CLI](https://github.com/aws/aws-nitro-enclaves-cli) to run EIF file(s) in the worker node.
-If you are using [Amazon Linux](https://hub.docker.com/_/amazonlinux) as a base docker image, it can be included as below:
+If you are using Amazon Linux from [ECR Gallery](https://gallery.ecr.aws/amazonlinux/amazonlinux) or [DockerHub](https://hub.docker.com/_/amazonlinux) as a base docker image, it can be included as below:
 
 ```bash
 RUN amazon-linux-extras install aws-nitro-enclaves-cli && \
