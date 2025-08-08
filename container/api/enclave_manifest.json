@@ -9,12 +9,12 @@
       "image_tag": "1.0",
       "target": "",
       "x86_64": {
-        "file_path": "container/api",
+        "file_path": "container/dockerapp/api",
         "file_name": "Dockerfile",
         "build_path": ""
       },
       "aarch64": {
-        "file_path": "container/api",
+        "file_path": "container/dockerapp/api",
         "file_name": "Dockerfile",
         "build_path": ""
       }
