@@ -6,7 +6,7 @@
 # Constants
 ####################################################
 
-readonly BUILDER_CONTAINER_DIR=$WORKING_DIR/container
+readonly BUILDER_CONTAINER_DIR=/tmp/aws-nitro-enclaves-with-k8s/container
 readonly BUILDER_ARTIFACTS_DIR=$BUILDER_CONTAINER_DIR/bin
 readonly BUILDER_DOCKERFILE=$BUILDER_CONTAINER_DIR/builder/Dockerfile.builder
 readonly BUILDER_IMAGE=ne-example-builder:latest
