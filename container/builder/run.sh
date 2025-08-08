@@ -190,7 +190,6 @@ main() {
       $MANIFEST_NAME/$MANIFEST_EIF_DOCKER_BUILD_PATH || {
         die "Cannot build docker image $MANIFEST_EIF_DOCKER_IMAGE_NAME!"
       }
-
     build_eif $MANIFEST_EIF_DOCKER_IMAGE_NAME $MANIFEST_EIF_DOCKER_IMAGE_TAG \
       $MANIFEST_EIF_NAME || die "Cannot build eif file!"
   }
