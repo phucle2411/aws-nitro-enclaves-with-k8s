@@ -1,0 +1,23 @@
+{
+  "name": "api-example",
+  "repository": "https://github.com/aws/aws-nitro-enclaves-with-k8s.git",
+  "tag": "main",
+  "eif": {
+    "name": "api.eif",
+    "docker": {
+      "image_name": "ne-build-api",
+      "image_tag": "1.0",
+      "target": "",
+      "x86_64": {
+        "file_path": "container/api",
+        "file_name": "Dockerfile",
+        "build_path": ""
+      },
+      "aarch64": {
+        "file_path": "container/api",
+        "file_name": "Dockerfile",
+        "build_path": ""
+      }
+    }
+  }
+}
