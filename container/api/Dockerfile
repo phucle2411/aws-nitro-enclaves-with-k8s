@@ -13,6 +13,6 @@ RUN amazon-linux-extras install aws-nitro-enclaves-cli && \
 
 COPY --from=build /app/api /usr/bin/api
 COPY bin/api.eif /home/api.eif
-COPY hello/run.sh /home/run.sh
+COPY api/run.sh /home/run.sh
 
 CMD ["/home/run.sh"]
