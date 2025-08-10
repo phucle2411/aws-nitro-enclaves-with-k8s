@@ -1,15 +1,15 @@
 package main
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"os"
-
-	ne "github.com/aws/aws-nitro-enclaves-sdk-go/pkg/aws"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/kms"
 )
 
 type encryptRequest struct {
@@ -29,7 +29,7 @@ type decryptResponse struct {
 	Plaintext string `json:"plaintext"`
 }
 
-var kmsClient *kms.KMS
+var gcm cipher.AEAD
 
 func encryptHandler(w http.ResponseWriter, r *http.Request) {
 	var req encryptRequest
@@ -37,13 +37,13 @@ func encryptHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	input := &kms.EncryptInput{KeyId: aws.String(req.KeyID), Plaintext: []byte(req.Plaintext)}
-	output, err := kmsClient.Encrypt(input)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		http.Error(w, "failed to generate nonce", http.StatusInternalServerError)
 		return
 	}
-	resp := encryptResponse{Ciphertext: base64.StdEncoding.EncodeToString(output.CiphertextBlob)}
+	ciphertext := gcm.Seal(nonce, nonce, []byte(req.Plaintext), nil)
+	resp := encryptResponse{Ciphertext: base64.StdEncoding.EncodeToString(ciphertext)}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
@@ -54,31 +54,44 @@ func decryptHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	blob, err := base64.StdEncoding.DecodeString(req.Ciphertext)
+	data, err := base64.StdEncoding.DecodeString(req.Ciphertext)
 	if err != nil {
 		http.Error(w, "invalid ciphertext", http.StatusBadRequest)
 		return
 	}
-	output, err := kmsClient.Decrypt(&kms.DecryptInput{CiphertextBlob: blob})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	nonceSize := gcm.NonceSize()
+	if len(data) < nonceSize {
+		http.Error(w, "invalid ciphertext", http.StatusBadRequest)
 		return
 	}
-	resp := decryptResponse{Plaintext: string(output.Plaintext)}
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		http.Error(w, "decryption failed", http.StatusInternalServerError)
+		return
+	}
+	resp := decryptResponse{Plaintext: string(plaintext)}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
 
 func main() {
-	region := os.Getenv("AWS_REGION")
-	if region == "" {
-		log.Fatal("AWS_REGION must be set")
+	keyB64 := os.Getenv("API_KEY")
+	if keyB64 == "" {
+		log.Fatal("API_KEY must be set")
 	}
-	sess, err := ne.NewSession(&aws.Config{Region: aws.String(region)})
+	key, err := base64.StdEncoding.DecodeString(keyB64)
 	if err != nil {
-		log.Fatalf("failed to create session: %v", err)
+		log.Fatalf("invalid API_KEY: %v", err)
 	}
-	kmsClient = kms.New(sess)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		log.Fatalf("failed to create cipher: %v", err)
+	}
+	gcm, err = cipher.NewGCM(block)
+	if err != nil {
+		log.Fatalf("failed to create gcm: %v", err)
+	}
 
 	http.HandleFunc("/api/encrypt", encryptHandler)
 	http.HandleFunc("/api/decrypt", decryptHandler)
