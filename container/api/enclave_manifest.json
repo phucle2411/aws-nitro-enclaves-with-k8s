@@ -11,12 +11,12 @@
       "x86_64": {
         "file_path": "container/dockerapp/api",
         "file_name": "Dockerfile",
-        "build_path": ""
+        "build_path": "container/dockerapp/api"
       },
       "aarch64": {
         "file_path": "container/dockerapp/api",
         "file_name": "Dockerfile",
-        "build_path": ""
+        "build_path": "container/dockerapp/api"
       }
     }
   }
