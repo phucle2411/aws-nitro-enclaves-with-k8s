@@ -25,6 +25,10 @@ to_upper_case() {
   echo $1 | awk '{print toupper($0)}'
 }
 
+to_lower_case() {
+  echo $1 | awk '{print tolower($0)}'
+}
+
 # ######################################################
 
 # Send an error-decorated text message to stderr

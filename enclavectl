@@ -137,11 +137,15 @@ try_create_setup_uuid() {
   CONFIG_SETUP_UUID=""
 
   # Try loading the UUID from file.
-  [[ -f $WORKING_DIR/$FILE_SETUP_ID ]] && { CONFIG_SETUP_UUID=$(<"$WORKING_DIR/$FILE_SETUP_ID"); }
+  [[ -f $WORKING_DIR/$FILE_SETUP_ID ]] && {
+    CONFIG_SETUP_UUID=$(<"$WORKING_DIR/$FILE_SETUP_ID")
+    CONFIG_SETUP_UUID=$(to_lower_case "$CONFIG_SETUP_UUID")
+  }
 
   [[ "${CONFIG_SETUP_UUID}" != "" ]] || {
     say "Setup UUID doesn't exist. Creating one..."
     CONFIG_SETUP_UUID=$(uuidgen)
+    CONFIG_SETUP_UUID=$(to_lower_case "$CONFIG_SETUP_UUID")
   }
 
   # Check if the UUID is valid.
@@ -175,7 +179,7 @@ try_load_configuration() {
   }
 
   [[ -f "$WORKING_DIR/$FILE_CONFIGURATION" ]] && \
-      CONFIG_SETUP_UUID=$(<"$WORKING_DIR/$FILE_SETUP_ID");
+      CONFIG_SETUP_UUID=$(to_lower_case "$(cat "$WORKING_DIR/$FILE_SETUP_ID")");
 }
 
 cmd_configure() {
