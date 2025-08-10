@@ -1,5 +1,5 @@
 # Build the API enclave application
-FROM public.ecr.aws/amazonlinux/amazonlinux:2 AS build
+FROM public.ecr.aws/amazonlinux/amazonlinux:2
 RUN yum install -y golang git
 WORKDIR /app
 COPY go.mod .

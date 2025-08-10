@@ -1,4 +1,8 @@
-# Build the API enclave application
+# Copyright 2022 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+######## full image ########
+
 FROM public.ecr.aws/amazonlinux/amazonlinux:2 as full_image
 
 RUN amazon-linux-extras install aws-nitro-enclaves-cli && \
@@ -30,11 +34,19 @@ RUN \
     cp -rf /usr/share/nitro_enclaves/ /ne-deps/usr/share/ && \
     cp -f /etc/nitro_enclaves/allocator.yaml /ne-deps/etc/nitro_enclaves/allocator.yaml
 
-FROM public.ecr.aws/amazonlinux/amazonlinux:2
-RUN amazon-linux-extras install aws-nitro-enclaves-cli && \
-    yum install aws-nitro-enclaves-cli-devel jq -y
+######## hello image ########
 
-COPY --from=build /app/api /usr/bin/api
+FROM public.ecr.aws/amazonlinux/amazonlinux:2 as image
+
+# Copying dependencies of the enclave apps from the 'full_image'
+# to shrink the final image size.
+#
+COPY --from=full_image /ne-deps/etc /etc
+COPY --from=full_image /ne-deps/lib64 /lib64
+COPY --from=full_image /ne-deps/run /run
+COPY --from=full_image /ne-deps/usr /usr
+COPY --from=full_image /ne-deps/var /var
+
 COPY bin/api.eif /home/api.eif
 COPY api/run.sh /home/run.sh
 
