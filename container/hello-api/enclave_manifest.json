@@ -1,0 +1,23 @@
+{
+  "name": "hello-api",
+  "repository": "https://github.com/phucle2411/aws-nitro-enclaves-with-k8s.git",
+  "tag": "main",
+  "eif": {
+    "name": "hello-api.eif",
+    "docker": {
+      "image_name": "hello-api",
+      "image_tag": "1.0",
+      "target": "",
+      "x86_64": {
+        "file_path": "container/dockerapp/hello-api",
+        "file_name": "Dockerfile",
+        "build_path": "container/dockerapp/hello-api"
+      },
+      "aarch64": {
+        "file_path": "container/dockerapp/hello-api",
+        "file_name": "Dockerfile",
+        "build_path": "container/dockerapp/hello-api"
+      }
+    }
+  }
+}
