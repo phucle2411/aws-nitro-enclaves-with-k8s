@@ -9,7 +9,7 @@
 main() {
   local project_name=$1
   local image="$project_name-$CONFIG_SETUP_UUID:latest"
-  local build_path=/tmp/aws-nitro-enclaves-with-k8s/container
+  local build_path=/Users/phucle/xtrading/aws-nitro-enclaves-with-k8s/container
   local dockerfile_path=$build_path/$project_name/Dockerfile
 
   docker image rm $image || true
