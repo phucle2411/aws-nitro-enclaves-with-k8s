@@ -5,3 +5,5 @@ WORKDIR /app
 COPY go.mod .
 COPY main.go .
 RUN go build -o api
+
+CMD ["/app/api"]
