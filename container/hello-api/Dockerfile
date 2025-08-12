@@ -15,6 +15,7 @@ WORKDIR /ne-deps
 RUN BINS="\
     /usr/bin/nitro-cli \
     /usr/bin/nitro-enclaves-allocator \
+    /usr/bin/vsock-proxy \
     /usr/bin/jq \
     " && \
     for bin in $BINS; do \
@@ -32,6 +33,7 @@ RUN \
     mkdir -p /ne-deps/run/nitro_enclaves && \
     mkdir -p /ne-deps/var/log/nitro_enclaves && \
     cp -rf /usr/share/nitro_enclaves/ /ne-deps/usr/share/ && \
+    cp -f /etc/nitro_enclaves/vsock-proxy.yaml /ne-deps/etc/nitro_enclaves && \
     cp -f /etc/nitro_enclaves/allocator.yaml /ne-deps/etc/nitro_enclaves/allocator.yaml
 
 ######## hello image ########

@@ -12,7 +12,8 @@ main() {
 
     nitro-cli run-enclave --cpu-count $ENCLAVE_CPU_COUNT --memory $ENCLAVE_MEMORY_SIZE \
         --eif-path $EIF_PATH --debug-mode
-        
+    vsock-proxy 8000 &
+
     local enclave_id=$(nitro-cli describe-enclaves | jq -r ".[0].EnclaveID")
     echo "-------------------------------"
     echo "Enclave ID is $enclave_id"
