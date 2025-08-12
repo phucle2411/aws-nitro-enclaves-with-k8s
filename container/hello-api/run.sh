@@ -2,7 +2,7 @@
 
 readonly EIF_PATH="/home/hello-api.eif"
 readonly ENCLAVE_CPU_COUNT=2
-readonly ENCLAVE_MEMORY_SIZE=2048
+readonly ENCLAVE_MEMORY_SIZE=1024
 
 main() {
     if [ -z "$AWS_REGION" ]; then
@@ -11,11 +11,14 @@ main() {
     fi
 
     nitro-cli run-enclave --cpu-count $ENCLAVE_CPU_COUNT --memory $ENCLAVE_MEMORY_SIZE \
-        --eif-path $EIF_PATH --debug-mode 2>&1 > /dev/null
+        --eif-path $EIF_PATH --debug-mode
+        
+    local enclave_id=$(nitro-cli describe-enclaves | jq -r ".[0].EnclaveID")
+    echo "-------------------------------"
+    echo "Enclave ID is $enclave_id"
+    echo "-------------------------------"
 
-    vsock-proxy 8080 &
-
-    sleep infinity
+    nitro-cli console --enclave-id $enclave_id # blocking call.
 }
 
 main
