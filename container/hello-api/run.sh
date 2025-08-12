@@ -2,7 +2,7 @@
 
 readonly EIF_PATH="/home/hello-api.eif"
 readonly ENCLAVE_CPU_COUNT=2
-readonly ENCLAVE_MEMORY_SIZE=6144
+readonly ENCLAVE_MEMORY_SIZE=2048
 
 main() {
     if [ -z "$AWS_REGION" ]; then
