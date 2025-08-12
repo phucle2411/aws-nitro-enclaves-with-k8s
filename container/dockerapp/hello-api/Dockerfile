@@ -1,9 +1,24 @@
-# Build the API enclave application
-FROM public.ecr.aws/amazonlinux/amazonlinux:2
-RUN yum install -y golang git
+FROM golang:1.21-alpine AS builder
+
 WORKDIR /app
 COPY go.mod .
 COPY main.go .
-RUN go build -o hello-api
+
+# Install dependencies (if needed)
+RUN go mod download
+
+# Build a statically linked binary (for Alpine compatibility)
+RUN CGO_ENABLED=0 GOOS=linux go build -o hello-api
+
+# Final minimal Alpine image
+FROM alpine:3.19
+WORKDIR /app
+
+# Copy the compiled binary from the builder stage
+COPY --from=builder /app/hello-api .
+
+# Run as non-root user (security best practice)
+RUN adduser -D appuser && chown -R appuser:appuser /app
+USER appuser
 
 CMD ["/app/hello-api"]
