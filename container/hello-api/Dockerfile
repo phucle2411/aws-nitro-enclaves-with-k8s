@@ -49,5 +49,5 @@ COPY --from=full_image /ne-deps/var /var
 
 COPY bin/hello-api.eif /home/hello-api.eif
 COPY hello-api/run.sh /home/run.sh
-
+RUN chmod +x /home/run.sh
 CMD ["/home/run.sh"]
