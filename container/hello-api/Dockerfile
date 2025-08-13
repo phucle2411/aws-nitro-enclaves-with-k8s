@@ -43,6 +43,7 @@ FROM public.ecr.aws/amazonlinux/amazonlinux:2 as image
 # Copying dependencies of the enclave apps from the 'full_image'
 # to shrink the final image size.
 #
+RUN yum install python3 -y
 COPY --from=full_image /ne-deps/etc /etc
 COPY --from=full_image /ne-deps/lib64 /lib64
 COPY --from=full_image /ne-deps/run /run
@@ -51,5 +52,7 @@ COPY --from=full_image /ne-deps/var /var
 
 COPY bin/hello-api.eif /home/hello-api.eif
 COPY hello-api/run.sh /home/run.sh
+COPY hello-api/proxy-config.json /home/proxy-config.json
+COPY hello-api/vsock.py /home/vsock.py
 RUN chmod +x /home/run.sh
 CMD ["/home/run.sh"]

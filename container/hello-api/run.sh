@@ -12,13 +12,22 @@ main() {
 
     nitro-cli run-enclave --cpu-count $ENCLAVE_CPU_COUNT --memory $ENCLAVE_MEMORY_SIZE \
         --eif-path $EIF_PATH --debug-mode
-    vsock-proxy 8080 &
-
+    sleep 5
     local enclave_id=$(nitro-cli describe-enclaves | jq -r ".[0].EnclaveID")
     echo "-------------------------------"
     echo "Enclave ID is $enclave_id"
     echo "-------------------------------"
 
+    # Start the proxy in background
+    echo "Starting VSOCK proxy..."
+    python3 $PROXY_SCRIPT both --config /tmp/runtime-proxy-config.json \
+        --log-level INFO > /var/log/vsock-proxy.log 2>&1 &
+    PROXY_PID=$!
+    
+    echo "Proxy started with PID: $PROXY_PID"
+    echo "Proxy logs: /var/log/vsock-proxy.log"
+    echo "-------------------------------"
+    
     nitro-cli console --enclave-id $enclave_id # blocking call.
 }
 

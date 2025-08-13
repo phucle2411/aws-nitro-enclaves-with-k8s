@@ -1,0 +1,17 @@
+{
+  "ingress": [
+    {
+      "description": "API service ingress",
+      "tcp_port": 8080,
+      "vsock_port": 8080
+    }
+  ],
+  "egress": [
+    {
+      "description": "KMS Southeast Asia",
+      "vsock_port": 8000,
+      "tcp_host": "kms.ap-southeast-1.amazonaws.com",
+      "tcp_port": 443
+    }
+  ]
+}
