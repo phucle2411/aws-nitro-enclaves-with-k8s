@@ -3,8 +3,11 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"time"
+
+	"github.com/mdlayher/vsock"
 )
 
 func printHelloPeriodically() {
@@ -17,6 +20,11 @@ func printHelloPeriodically() {
 			log.Println("hello from enclave")
 		}
 	}
+}
+
+// vsockListener creates a net.Listener using VSOCK
+func vsockListener(port uint32) (net.Listener, error) {
+	return vsock.Listen(port, nil)
 }
 
 func main() {
@@ -32,10 +40,18 @@ func main() {
 		}
 	})
 
-	// Start the server
-	port := "8080"
-	log.Printf("Server starting on port %s...", port)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	// Create VSOCK listener instead of TCP
+	port := uint32(8080) // VSOCK port
+	listener, err := vsockListener(port)
+	if err != nil {
+		log.Fatalf("Failed to create VSOCK listener: %v", err)
+	}
+	defer listener.Close()
+
+	log.Printf("Server starting on VSOCK port %d...", port)
+
+	// Start HTTP server with our VSOCK listener
+	if err := http.Serve(listener, nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }
