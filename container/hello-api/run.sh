@@ -21,7 +21,7 @@ main() {
 
     # Start the proxy in background
     echo "Starting VSOCK proxy..."
-    python3 $PROXY_SCRIPT both --config /tmp/runtime-proxy-config.json \
+    python3 $PROXY_SCRIPT both --config /home/proxy-config.json \
         --log-level INFO > /var/log/vsock-proxy.log 2>&1 &
     PROXY_PID=$!
     
