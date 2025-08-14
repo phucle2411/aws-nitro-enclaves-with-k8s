@@ -2,7 +2,7 @@
 
 readonly EIF_PATH="/home/hello-api.eif"
 readonly ENCLAVE_CPU_COUNT=2
-readonly ENCLAVE_MEMORY_SIZE=1024
+readonly ENCLAVE_MEMORY_SIZE=2048
 readonly PROXY_SCRIPT="/home/vsock.py"
 
 main() {
