@@ -20,7 +20,7 @@ main() {
     echo "Enclave ID is $enclave_id"
     echo "-------------------------------"
 
-    Start the proxy in background
+    echo "Start the proxy in background"
     echo "Starting VSOCK proxy..."
     python3 $PROXY_SCRIPT both --config /home/proxy-config.json \
         --log-level INFO > /var/log/vsock-proxy.log 2>&1 &

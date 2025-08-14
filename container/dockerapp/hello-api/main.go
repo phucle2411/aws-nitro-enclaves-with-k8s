@@ -45,7 +45,7 @@ func NewVSOCKHTTPClient(parentCID, parentPort uint32) *http.Client {
 }
 
 func makeKMSRequest(client *http.Client) (string, error) {
-	resp, err := client.Get("https://kms.ap-southeast-1.amazonaws.com")
+	resp, err := client.Get("https://www.24h.com.vn/")
 	if err != nil {
 		return "", fmt.Errorf("KMS request failed: %w", err)
 	}
