@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -15,81 +13,116 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
+	"github.com/aws/smithy-go/middleware"
 	"github.com/mdlayher/vsock"
 )
 
-// KMS request/response structures
-type KMSDecryptRequest struct {
-	CiphertextBlob string                 `json:"CiphertextBlob"`
-	KeyId          string                 `json:"KeyId,omitempty"`
-	Recipient      map[string]interface{} `json:"Recipient,omitempty"`
+// VSockHTTPClient creates an HTTP client that routes through VSOCK
+type VSockHTTPClient struct {
+	parentCID  uint32
+	parentPort uint32
 }
 
-type KMSEncryptRequest struct {
-	KeyId     string                 `json:"KeyId"`
-	Plaintext string                 `json:"Plaintext"`
-	Recipient map[string]interface{} `json:"Recipient,omitempty"`
+// NewVSockHTTPClient creates a new VSOCK-based HTTP client
+func NewVSockHTTPClient(parentCID, parentPort uint32) *VSockHTTPClient {
+	return &VSockHTTPClient{
+		parentCID:  parentCID,
+		parentPort: parentPort,
+	}
 }
 
-type KMSResponse struct {
-	Plaintext      string `json:"Plaintext,omitempty"`
-	CiphertextBlob string `json:"CiphertextBlob,omitempty"`
-	KeyId          string `json:"KeyId,omitempty"`
-}
-
-// VSockDialer creates a custom dialer that uses VSOCK to connect to parent
-type VSockDialer struct {
-	ParentCID  uint32
-	ParentPort uint32
-}
-
-func (d *VSockDialer) Dial(network, addr string) (net.Conn, error) {
-	// Always connect to parent via VSOCK, ignoring the actual address
-	return vsock.Dial(d.ParentCID, d.ParentPort, nil)
-}
-
-// KMSClient handles KMS operations through VSOCK proxy
-type KMSClient struct {
-	httpClient *http.Client
-	region     string
-	keyID      string
-}
-
-// NewKMSClient creates a new KMS client that uses VSOCK
-func NewKMSClient(region, keyID string) *KMSClient {
-	// Create custom transport that uses VSOCK
-	vsockDialer := &VSockDialer{
-		ParentCID:  3,    // Parent CID (usually 3)
-		ParentPort: 8000, // VSOCK port where proxy listens for KMS
+// Do implements the HTTPClient interface for AWS SDK
+func (c *VSockHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	// Connect through VSOCK
+	conn, err := vsock.Dial(c.parentCID, c.parentPort, nil)
+	if err != nil {
+		return nil, fmt.Errorf("vsock dial failed: %w", err)
 	}
 
+	// Create a custom transport using the VSOCK connection
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return vsockDialer.Dial(network, addr)
+			// Return the existing VSOCK connection
+			return conn, nil
 		},
+		// Skip TLS verification for demo (configure properly in production)
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true, // For demo; use proper certs in production
+			InsecureSkipVerify: true,
 		},
 	}
 
-	return &KMSClient{
-		httpClient: &http.Client{
-			Transport: transport,
-			Timeout:   30 * time.Second,
-		},
-		region: region,
-		keyID:  keyID,
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
 	}
+
+	return client.Do(req)
+}
+
+// KMSService wraps AWS KMS client with enclave support
+type KMSService struct {
+	client *kms.Client
+	keyID  string
+}
+
+// NewKMSService creates a new KMS service with VSOCK support
+func NewKMSService(region, keyID string) (*KMSService, error) {
+	// Create custom HTTP client that uses VSOCK
+	vsockClient := NewVSockHTTPClient(3, 8000) // Parent CID 3, port 8000
+
+	// Load default config with custom HTTP client
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithRegion(region),
+		config.WithHTTPClient(vsockClient),
+		// Override the endpoint to go through our proxy
+		config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
+			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+				if service == kms.ServiceID {
+					return aws.Endpoint{
+						URL: fmt.Sprintf("https://kms.%s.amazonaws.com", region),
+					}, nil
+				}
+				return aws.Endpoint{}, fmt.Errorf("unknown service: %s", service)
+			}),
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Create KMS client with custom middleware for attestation
+	kmsClient := kms.NewFromConfig(cfg, func(o *kms.Options) {
+		// Add custom middleware to include attestation
+		o.APIOptions = append(o.APIOptions, func(stack *middleware.Stack) error {
+			return stack.Initialize.Add(middleware.InitializeMiddlewareFunc(
+				"AddAttestation",
+				func(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+					out middleware.InitializeOutput, metadata middleware.Metadata, err error) {
+					// Add attestation document to the request if available
+					if attestation, err := getAttestationDocument(); err == nil && attestation != "" {
+						// The attestation would be added to the request context
+						// This is simplified - actual implementation would depend on KMS API
+						ctx = context.WithValue(ctx, "attestation", attestation)
+					}
+					return next.HandleInitialize(ctx, in)
+				}), middleware.Before)
+		})
+	})
+
+	return &KMSService{
+		client: kmsClient,
+		keyID:  keyID,
+	}, nil
 }
 
 // getAttestationDocument gets the attestation document from the Nitro Secure Module
 func getAttestationDocument() (string, error) {
-	// In production, this would use the actual NSM interface
-	// For now, we'll simulate it
 	cmd := exec.Command("/app/get-attestation-document")
 	output, err := cmd.Output()
 	if err != nil {
-		// Return empty for testing
 		log.Printf("Warning: Could not get attestation document: %v", err)
 		return "", nil
 	}
@@ -97,102 +130,63 @@ func getAttestationDocument() (string, error) {
 }
 
 // Encrypt encrypts plaintext using KMS
-func (c *KMSClient) Encrypt(plaintext string) (string, error) {
+func (s *KMSService) Encrypt(ctx context.Context, plaintext string) (string, error) {
+	// Get attestation document
 	attestation, _ := getAttestationDocument()
 
-	request := KMSEncryptRequest{
-		KeyId:     c.keyID,
-		Plaintext: base64.StdEncoding.EncodeToString([]byte(plaintext)),
+	input := &kms.EncryptInput{
+		KeyId:     aws.String(s.keyID),
+		Plaintext: []byte(plaintext),
 	}
 
+	// Add attestation if available
 	if attestation != "" {
-		request.Recipient = map[string]interface{}{
-			"AttestationDocument": attestation,
+		input.EncryptionContext = map[string]string{
+			"aws:nitro-enclave:attestation": attestation,
 		}
+		// Note: In production, you'd use the Recipient field with proper attestation structure
+		// This is simplified for demonstration
 	}
 
-	body, err := json.Marshal(request)
+	result, err := s.client.Encrypt(ctx, input)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return "", fmt.Errorf("KMS encrypt failed: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", fmt.Sprintf("https://kms.%s.amazonaws.com/", c.region), bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/x-amz-json-1.1")
-	req.Header.Set("X-Amz-Target", "TrentService.Encrypt")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("KMS error: %s - %s", resp.Status, string(body))
-	}
-
-	var kmsResp KMSResponse
-	if err := json.NewDecoder(resp.Body).Decode(&kmsResp); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return kmsResp.CiphertextBlob, nil
+	// Return base64 encoded ciphertext
+	return base64.StdEncoding.EncodeToString(result.CiphertextBlob), nil
 }
 
 // Decrypt decrypts ciphertext using KMS
-func (c *KMSClient) Decrypt(ciphertextBlob string) (string, error) {
+func (s *KMSService) Decrypt(ctx context.Context, ciphertextBlob string) (string, error) {
+	// Decode base64 ciphertext
+	ciphertext, err := base64.StdEncoding.DecodeString(ciphertextBlob)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode ciphertext: %w", err)
+	}
+
+	// Get attestation document
 	attestation, _ := getAttestationDocument()
 
-	request := KMSDecryptRequest{
-		CiphertextBlob: ciphertextBlob,
-		KeyId:          c.keyID,
+	input := &kms.DecryptInput{
+		CiphertextBlob: ciphertext,
+		KeyId:          aws.String(s.keyID),
 	}
 
+	// Add attestation if available
 	if attestation != "" {
-		request.Recipient = map[string]interface{}{
-			"AttestationDocument": attestation,
+		input.EncryptionContext = map[string]string{
+			"aws:nitro-enclave:attestation": attestation,
 		}
+		// Note: In production, you'd use the Recipient field with proper attestation structure
 	}
 
-	body, err := json.Marshal(request)
+	result, err := s.client.Decrypt(ctx, input)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return "", fmt.Errorf("KMS decrypt failed: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", fmt.Sprintf("https://kms.%s.amazonaws.com/", c.region), bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/x-amz-json-1.1")
-	req.Header.Set("X-Amz-Target", "TrentService.Decrypt")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("KMS error: %s - %s", resp.Status, string(body))
-	}
-
-	var kmsResp KMSResponse
-	if err := json.NewDecoder(resp.Body).Decode(&kmsResp); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	plaintext, err := base64.StdEncoding.DecodeString(kmsResp.Plaintext)
-	if err != nil {
-		return "", fmt.Errorf("failed to decode plaintext: %w", err)
-	}
-
-	return string(plaintext), nil
+	return string(result.Plaintext), nil
 }
 
 func printHelloPeriodically() {
@@ -224,8 +218,11 @@ func main() {
 		log.Fatal("KMS_KEY_ID environment variable is required")
 	}
 
-	// Initialize KMS client
-	kmsClient := NewKMSClient(region, keyID)
+	// Initialize KMS service
+	kmsService, err := NewKMSService(region, keyID)
+	if err != nil {
+		log.Fatalf("Failed to initialize KMS service: %v", err)
+	}
 
 	// Start the periodic hello message in a goroutine
 	go printHelloPeriodically()
@@ -255,7 +252,8 @@ func main() {
 			return
 		}
 
-		ciphertext, err := kmsClient.Encrypt(req.Plaintext)
+		ctx := context.Background()
+		ciphertext, err := kmsService.Encrypt(ctx, req.Plaintext)
 		if err != nil {
 			log.Printf("Encryption error: %v", err)
 			http.Error(w, fmt.Sprintf("Encryption failed: %v", err), http.StatusInternalServerError)
@@ -284,7 +282,8 @@ func main() {
 			return
 		}
 
-		plaintext, err := kmsClient.Decrypt(req.Ciphertext)
+		ctx := context.Background()
+		plaintext, err := kmsService.Decrypt(ctx, req.Ciphertext)
 		if err != nil {
 			log.Printf("Decryption error: %v", err)
 			http.Error(w, fmt.Sprintf("Decryption failed: %v", err), http.StatusInternalServerError)

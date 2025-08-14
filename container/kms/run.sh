@@ -47,6 +47,13 @@ init() {
     vsock-proxy 8000 kms.$CMK_REGION.amazonaws.com 443 &
 }
 
+/*************  ✨ Windsurf Command ⭐  *************/
+# Terminate the enclave.
+#
+# This function takes one argument: the ID of the enclave to terminate.
+#
+# The function will exit with a non-zero status if the termination fails.
+/*******  51dbaccf-74c1-45c6-8ad4-ea73ab1cb84c  *******/
 uninit() {
     local enclave_id=$1
     nitro-cli terminate-enclave --enclave-id $enclave_id 2>&1 > /dev/null
