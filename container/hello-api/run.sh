@@ -20,14 +20,14 @@ main() {
     echo "-------------------------------"
 
     # Start the proxy in background
-    echo "Starting VSOCK proxy..."
-    python3 $PROXY_SCRIPT both --config /home/proxy-config.json \
-        --log-level INFO > /var/log/vsock-proxy.log 2>&1 &
-    PROXY_PID=$!
+    # echo "Starting VSOCK proxy..."
+    # python3 $PROXY_SCRIPT both --config /home/proxy-config.json \
+    #     --log-level INFO > /var/log/vsock-proxy.log 2>&1 &
+    # PROXY_PID=$!
     
-    echo "Proxy started with PID: $PROXY_PID"
-    echo "Proxy logs: /var/log/vsock-proxy.log"
-    echo "-------------------------------"
+    # echo "Proxy started with PID: $PROXY_PID"
+    # echo "Proxy logs: /var/log/vsock-proxy.log"
+    # echo "-------------------------------"
     
     nitro-cli console --enclave-id $enclave_id # blocking call.
 }
