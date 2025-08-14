@@ -10,6 +10,7 @@ main() {
         echo "AWS_REGION must be set" >&2
         exit 1
     fi
+    vsock-proxy 8000 kms.ap-southeast-1.amazonaws.com 443 &
 
     nitro-cli run-enclave --cpu-count $ENCLAVE_CPU_COUNT --memory $ENCLAVE_MEMORY_SIZE \
         --eif-path $EIF_PATH --debug-mode
