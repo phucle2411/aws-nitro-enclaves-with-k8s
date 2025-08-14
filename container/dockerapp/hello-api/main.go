@@ -20,6 +20,14 @@ import (
 	"github.com/mdlayher/vsock"
 )
 
+// Constants for VSOCK CIDs
+const (
+	// VMADDR_CID_HOST is the parent/host CID (typically 3 for Nitro Enclaves)
+	VMADDR_CID_HOST = 3
+	// VMADDR_CID_ANY means any CID
+	VMADDR_CID_ANY = 0xFFFFFFFF // -1 in uint32
+)
+
 // VSockHTTPClient creates an HTTP client that routes through VSOCK
 type VSockHTTPClient struct {
 	parentCID  uint32
@@ -206,23 +214,119 @@ func vsockListener(port uint32) (net.Listener, error) {
 	return vsock.Listen(port, nil)
 }
 
+// getLocalCID attempts to get the local CID using system calls
+func getLocalCID() (uint32, error) {
+	// Try to read from /proc/self/vsock if available
+	data, err := os.ReadFile("/proc/self/vsock")
+	if err == nil {
+		var cid uint32
+		_, err = fmt.Sscanf(string(data), "%d", &cid)
+		if err == nil {
+			return cid, nil
+		}
+	}
+
+	// Alternative: Try to create a listener and check its address
+	// This might not work in all environments
+	testListener, err := vsock.Listen(0, nil)
+	if err != nil {
+		return 0, fmt.Errorf("cannot determine local CID: %v", err)
+	}
+	defer testListener.Close()
+
+	// Try to extract CID from the listener address
+	if addr, ok := testListener.Addr().(*vsock.Addr); ok {
+		return addr.ContextID, nil
+	}
+
+	return 0, fmt.Errorf("cannot determine local CID from listener")
+}
+
+// logVSockInfo logs VSOCK-related information
+func logVSockInfo() {
+	log.Println("=== VSOCK Information ===")
+
+	// Try to get local CID using our custom function
+	localCID, err := getLocalCID()
+	if err != nil {
+		log.Printf("Could not determine local CID: %v", err)
+		log.Printf("Note: The enclave CID will be assigned by the hypervisor")
+	} else {
+		log.Printf("Local CID (this enclave): %d", localCID)
+	}
+
+	// Log parent CID (always 3 for Nitro Enclaves)
+	log.Printf("Parent CID (host): %d (standard for Nitro Enclaves)", VMADDR_CID_HOST)
+
+	// Test connectivity to parent
+	log.Printf("Testing connection to parent VSOCK proxy...")
+	testConn, err := vsock.Dial(VMADDR_CID_HOST, 8000, nil)
+	if err != nil {
+		log.Printf("⚠️  Cannot connect to parent VSOCK proxy on CID %d port 8000: %v", VMADDR_CID_HOST, err)
+		log.Printf("   Make sure the VSOCK proxy is running on the parent instance")
+	} else {
+		testConn.Close()
+		log.Printf("✓ Successfully tested connection to parent VSOCK proxy")
+	}
+
+	log.Println("========================")
+}
+
 func main() {
+	// Initial startup log
+	log.Println("=== Enclave Application Starting ===")
+	log.Printf("Time: %s", time.Now().Format(time.RFC3339))
+
+	// Log VSOCK information early
+	logVSockInfo()
+
 	// Get configuration from environment
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
 		region = "ap-southeast-1"
 	}
+	log.Printf("AWS Region: %s", region)
 
 	keyID := os.Getenv("KMS_KEY_ID")
 	if keyID == "" {
 		log.Fatal("KMS_KEY_ID environment variable is required")
 	}
+	log.Printf("KMS Key ID: %s", keyID)
+
+	// Create VSOCK listener first to ensure VSOCK is working
+	port := uint32(8080) // VSOCK port
+	log.Printf("Creating VSOCK listener on port %d...", port)
+
+	listener, err := vsockListener(port)
+	if err != nil {
+		log.Printf("Failed to create VSOCK listener on port %d: %v", port, err)
+		log.Printf("Error type: %T", err)
+
+		// Try alternate port
+		altPort := uint32(8081)
+		log.Printf("Trying alternate port %d...", altPort)
+		listener, err = vsockListener(altPort)
+		if err != nil {
+			log.Fatalf("Failed to create VSOCK listener on alternate port %d: %v", altPort, err)
+		}
+		port = altPort
+	}
+	defer listener.Close()
+
+	log.Printf("✓ Successfully created VSOCK listener on port %d", port)
+
+	// Log listener address info
+	if addr, ok := listener.Addr().(*vsock.Addr); ok {
+		log.Printf("VSOCK Listener Address - CID: %d, Port: %d", addr.ContextID, addr.Port)
+	}
 
 	// Initialize KMS service
+	log.Println("\nInitializing KMS service...")
 	kmsService, err := NewKMSService(region, keyID)
 	if err != nil {
 		log.Fatalf("Failed to initialize KMS service: %v", err)
 	}
+	log.Println("✓ KMS service initialized")
 
 	// Start the periodic hello message in a goroutine
 	go printHelloPeriodically()
@@ -296,22 +400,18 @@ func main() {
 		})
 	})
 
-	// Create VSOCK listener for incoming connections
-	port := uint32(8080) // VSOCK port
-	listener, err := vsockListener(port)
-	if err != nil {
-		log.Fatalf("Failed to create VSOCK listener: %v", err)
-	}
-	defer listener.Close()
-
+	log.Println("\n=== Server Configuration ===")
 	log.Printf("Server starting on VSOCK port %d...", port)
 	log.Printf("Using KMS in region: %s", region)
+	log.Printf("Parent CID: %d (connect here for KMS proxy)", VMADDR_CID_HOST)
 	log.Printf("Endpoints available:")
 	log.Printf("  GET  / - Health check")
 	log.Printf("  POST /encrypt - Encrypt plaintext")
 	log.Printf("  POST /decrypt - Decrypt ciphertext")
+	log.Println("===========================\n")
 
 	// Start HTTP server with our VSOCK listener
+	log.Println("Starting HTTP server...")
 	if err := http.Serve(listener, nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
