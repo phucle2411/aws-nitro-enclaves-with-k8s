@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -28,13 +30,12 @@ func printHelloPeriodically() {
 	}
 }
 
-// vsockListener creates a net.Listener using VSOCK
 func vsockListener(port uint32) (net.Listener, error) {
 	return vsock.Listen(port, nil)
 }
 
-// NewVSOCKHTTPClient creates an HTTP client that routes through VSOCK proxy
-func NewVSOCKHTTPClient(parentCID, parentPort uint32) *http.Client {
+// NewProxyHTTPClient creates an HTTP client that routes through VSOCK proxy
+func NewProxyHTTPClient(parentCID, parentPort uint32) *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -44,20 +45,25 @@ func NewVSOCKHTTPClient(parentCID, parentPort uint32) *http.Client {
 				InsecureSkipVerify: true,
 			},
 		},
+		Timeout: 30 * time.Second,
 	}
 }
 
-// KMSService encapsulates KMS operations
 type KMSService struct {
 	client *kms.Client
 	keyID  string
 }
 
-// NewKMSService creates a new KMS service instance
-func NewKMSService(httpClient *http.Client, region, keyID string) (*KMSService, error) {
+func NewKMSService(kmsClient *http.Client, imdsClient *http.Client, region, keyID string) (*KMSService, error) {
+	// Custom credential provider for enclaves
+	credProvider := aws.CredentialsProviderFunc(func(ctx context.Context) (aws.Credentials, error) {
+		return getEnclaveCredentials(imdsClient)
+	})
+
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion(region),
-		config.WithHTTPClient(httpClient),
+		config.WithHTTPClient(kmsClient),
+		config.WithCredentialsProvider(aws.NewCredentialsCache(credProvider)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
@@ -69,11 +75,49 @@ func NewKMSService(httpClient *http.Client, region, keyID string) (*KMSService, 
 	}, nil
 }
 
-// EncryptText encrypts plaintext using KMS
-func (s *KMSService) EncryptText(ctx context.Context, plaintext string) (string, error) {
+func getEnclaveCredentials(client *http.Client) (aws.Credentials, error) {
+	// Get IAM role name
+	resp, err := client.Get("http://169.254.169.254/latest/meta-data/iam/security-credentials/")
+	if err != nil {
+		return aws.Credentials{}, fmt.Errorf("failed to get IAM role: %w", err)
+	}
+	defer resp.Body.Close()
+
+	roleName, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return aws.Credentials{}, fmt.Errorf("failed to read role name: %w", err)
+	}
+
+	// Get temporary credentials
+	credsResp, err := client.Get(fmt.Sprintf("http://169.254.169.254/latest/meta-data/iam/security-credentials/%s", string(roleName)))
+	if err != nil {
+		return aws.Credentials{}, fmt.Errorf("failed to get credentials: %w", err)
+	}
+	defer credsResp.Body.Close()
+
+	var creds struct {
+		AccessKeyID     string `json:"AccessKeyId"`
+		SecretAccessKey string `json:"SecretAccessKey"`
+		Token           string `json:"Token"`
+		Expiration      string `json:"Expiration"`
+	}
+	if err := json.NewDecoder(credsResp.Body).Decode(&creds); err != nil {
+		return aws.Credentials{}, fmt.Errorf("failed to decode credentials: %w", err)
+	}
+
+	return aws.Credentials{
+		AccessKeyID:     creds.AccessKeyID,
+		SecretAccessKey: creds.SecretAccessKey,
+		SessionToken:    creds.Token,
+		CanExpire:       true,
+		Expires:         time.Now().Add(30 * time.Minute), // Approximate expiration
+	}, nil
+}
+
+func (s *KMSService) EncryptText(ctx context.Context, text string) (string, error) {
 	input := &kms.EncryptInput{
 		KeyId:     aws.String(s.keyID),
-		Plaintext: []byte(plaintext),
+		Plaintext: []byte(text),
 	}
 
 	result, err := s.client.Encrypt(ctx, input)
@@ -86,20 +130,21 @@ func (s *KMSService) EncryptText(ctx context.Context, plaintext string) (string,
 
 func main() {
 	// Configuration
-	region := "ap-southeast-1"      // Change to your region
-	keyID := "alias/your-key-alias" // Change to your KMS key ID or alias
+	region := "ap-southeast-1"
+	keyID := "alias/enclave-tmp" // Replace with your KMS key ID or alias
 
-	// Start the periodic hello message
-	go printHelloPeriodically()
-
-	// Create HTTP client for VSOCK proxy
-	httpClient := NewVSOCKHTTPClient(3, 8000)
+	// Create clients for different proxies
+	kmsClient := NewProxyHTTPClient(3, 8000)  // For KMS traffic (to kms.ap-southeast-1.amazonaws.com)
+	imdsClient := NewProxyHTTPClient(3, 8001) // For IMDS traffic (to 169.254.169.254)
 
 	// Initialize KMS service
-	kmsService, err := NewKMSService(httpClient, region, keyID)
+	kmsService, err := NewKMSService(kmsClient, imdsClient, region, keyID)
 	if err != nil {
 		log.Fatalf("Failed to create KMS service: %v", err)
 	}
+
+	// Start periodic messages
+	go printHelloPeriodically()
 
 	// Define routes
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -116,24 +161,24 @@ func main() {
 			return
 		}
 
-		plaintext := r.FormValue("text")
-		if plaintext == "" {
+		text := r.FormValue("text")
+		if text == "" {
 			http.Error(w, "Missing 'text' parameter", http.StatusBadRequest)
 			return
 		}
 
-		ciphertext, err := kmsService.EncryptText(r.Context(), plaintext)
+		ciphertext, err := kmsService.EncryptText(r.Context(), text)
 		if err != nil {
 			log.Printf("Encryption error: %v", err)
 			http.Error(w, fmt.Sprintf("Encryption failed: %v", err), http.StatusInternalServerError)
 			return
 		}
 
-		log.Printf("Successfully encrypted text (length: %d)", len(plaintext))
+		log.Printf("Successfully encrypted text (length: %d)", len(text))
 		fmt.Fprintf(w, "Ciphertext: %s", ciphertext)
 	})
 
-	// Create VSOCK listener
+	// Start VSOCK server
 	port := uint32(8080)
 	listener, err := vsockListener(port)
 	if err != nil {
