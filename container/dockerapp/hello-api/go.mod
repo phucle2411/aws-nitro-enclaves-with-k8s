@@ -8,7 +8,6 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.38.0
 	github.com/aws/aws-sdk-go-v2/config v1.31.0
 	github.com/aws/aws-sdk-go-v2/service/kms v1.44.0
-	github.com/aws/smithy-go v1.22.5
 	github.com/mdlayher/vsock v1.2.1
 )
 
@@ -23,6 +22,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.28.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.33.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.37.0 // indirect
+	github.com/aws/smithy-go v1.22.5 // indirect
 	github.com/mdlayher/socket v0.4.1 // indirect
 	golang.org/x/net v0.9.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
